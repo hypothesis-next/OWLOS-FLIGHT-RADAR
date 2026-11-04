@@ -51,7 +51,9 @@ static const char *TAG = "flight";
 #define POWER_OFF_TAPS        3       /* taps in a row */
 #define POWER_OFF_WINDOW_MS   1200u   /* all of them, first finger down to last lift */
 #define POWER_OFF_TAP_MAX_MS  300u    /* held longer it is a press, not a tap */
-#define POWER_OFF_TAP_SAMPLES 2       /* seen once is the resistive panel inventing a press */
+#define POWER_OFF_TAP_MIN_MS  40u     /* first to last reading of the finger: less is a bounce. time, samples can be 2 ms apart */
+#define POWER_OFF_GAP_MIN_MS  70u     /* up this long between taps: less is one press chattering */
+#define POWER_OFF_SLOP_PX     40      /* each tap this near the first: further is a stroke, not taps */
 #define POWER_OFF_LIFT_MS     30u     /* up for less than this, the panel flickered: the same press */
 #define POWER_OFF_SETTLE_MS   300u    /* T_IRQ high this long before sleeping, or it wakes at once */
 #define POWER_OFF_WAIT_MS     5000u   /* T_IRQ still low after this: no sleep, it would not stay asleep */
@@ -881,24 +883,34 @@ static void screen_flip(int on)
 #if RADAR_POWER_OFF
 /* fed every touch sample, 1 when the last tap of the row is done. free: ui_tap_free. a tap is judged
  * once the finger has stayed up, so a flicker in the middle of a press does not make it two */
-static int power_tap(int down, int free, uint32_t t)
+static int power_tap(int down, int free, int x, int y, uint32_t t)
 {
-    static int      count, samples, spoiled, pressed;
-    static uint32_t first, start, lift;
+    enum { KEPT = 16 };
+    static int      count, samples, spoiled, pressed, first_x, first_y;
+    static int16_t  xs[KEPT], ys[KEPT];
+    static uint32_t first, start, last, lift, lift_before;
     if (!free && !samples) count = 0;                  // another page, or the end of a drag
     if (down) {
         if (!samples) { start = t; spoiled = 0; }
         spoiled |= !free;
+        if (samples < KEPT) { xs[samples] = (int16_t)x; ys[samples] = (int16_t)y; }
         samples++;
+        last = t;
         pressed = 1;
         return 0;
     }
     if (pressed) { pressed = 0; lift = t; }
     if (!samples || t - lift < POWER_OFF_LIFT_MS) return 0;
-    int tap = free && !spoiled && samples >= POWER_OFF_TAP_SAMPLES && lift - start <= POWER_OFF_TAP_MAX_MS;
+    // where it landed: the middle reading, the first ones of a resistive press wander
+    const int mid = (samples < KEPT ? samples : KEPT) / 2, dx = xs[mid] - first_x, dy = ys[mid] - first_y;
+    int tap = free && !spoiled && last - start >= POWER_OFF_TAP_MIN_MS && lift - start <= POWER_OFF_TAP_MAX_MS;
+    if (count && lift - first > POWER_OFF_WINDOW_MS) count = 0;   // too slow: this one may start a new row
+    if (count && (start - lift_before < POWER_OFF_GAP_MIN_MS ||
+                  dx * dx + dy * dy > POWER_OFF_SLOP_PX * POWER_OFF_SLOP_PX)) tap = 0;
+    lift_before = lift;
+    if (tap && !count) { first = start; first_x = xs[mid]; first_y = ys[mid]; }
     samples = 0;
     if (!tap) { count = 0; return 0; }
-    if (!count || lift - first > POWER_OFF_WINDOW_MS) { count = 0; first = start; }
     if (++count < POWER_OFF_TAPS) return 0;
     count = 0;
     return 1;
@@ -920,7 +932,7 @@ static void power_off(void)
 {
     s_power_off_ask = 0;
     if (!tp_pen_standby()) {
-        ESP_LOGW(TAG, "no power off: a touch could not wake this board");
+        ESP_LOGW(TAG, "no power off: a touch could not wake this board, T_IRQ does not show presses");
         return;
     }
     disp_backlight(0);
@@ -1030,7 +1042,7 @@ static void ui_task(void *arg)
             const tsample_t *s = &s_ts[i];
             ui_touch(&s_ui, s->down, s->x, s->y, s->rx, s->ry, s->t, &cmd);
 #if RADAR_POWER_OFF
-            if (power_tap(s->down, ui_tap_free(&s_ui), s->t)) s_power_off_ask = 1;
+            if (power_tap(s->down, ui_tap_free(&s_ui), s->x, s->y, s->t)) s_power_off_ask = 1;
 #endif
         }
         s_nts = 0;

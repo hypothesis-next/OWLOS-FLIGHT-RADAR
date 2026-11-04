@@ -91,6 +91,28 @@ static void chip_select(int on);
  * missed. then every sample asks the chip, as before */
 static int s_irq;
 
+#if RADAR_POWER_OFF
+/* power off wakes on this pin, so what it does is watched. pin: its level before this read, when
+ * the chip has been in pen interrupt mode since the last read. a press on both reads with the pin
+ * high is a real miss, a press that only just came is timing. 3 in a row, with no press seen on the
+ * pin between: the pin does not show presses. and the start's one look (irq_init) or one timing
+ * miss does not cost the whole run: the pin high with nothing pressed, and no miss against it, and
+ * the chip is left alone again. a finger still on from the wake lands here, a stuck pin never does */
+#define PEN_MISSES_REFUSE 3
+static int s_pen_misses;
+
+static void pen_note(int pin, int pressed)
+{
+    static int was;
+    if (pressed && was) s_pen_misses = pin ? s_pen_misses + 1 : 0;
+    was = pressed;
+    if (!s_irq && !pressed && pin && !s_pen_misses) {
+        s_irq = 1;
+        ESP_LOGI(TAG, "pen interrupt on GPIO %d: high with nothing pressed, in use again", PIN_T_IRQ);
+    }
+}
+#endif
+
 static void irq_init(void)
 {
     gpio_config_t in = { .pin_bit_mask = 1ULL << PIN_T_IRQ, .mode = GPIO_MODE_INPUT };
@@ -188,7 +210,7 @@ int tp_pen_standby(void)
 #if TOUCH_GT911_TOO
     if (s_gt) return 0;                              // the C version: nothing on T_IRQ to wake it
 #endif
-    if (!s_dev) return 0;
+    if (!s_dev || s_pen_misses >= PEN_MISSES_REFUSE) return 0;
     xfer(0xD0);                                      // power down, pen interrupt on
     return 1;
 }
@@ -210,8 +232,16 @@ int tp_read(int *rx, int *ry)
     if (s_gt) return gt_read(rx, ry);
 #endif
     static uint32_t n;
+#if RADAR_POWER_OFF
+    const int pin = gpio_get_level(PIN_T_IRQ);
+#endif
     int idle = s_irq && gpio_get_level(PIN_T_IRQ);
-    if (idle && ++n % 20) return 0;                  // not pressed, says the pin. every 20th: ask anyway
+    if (idle && ++n % 20) {                          // not pressed, says the pin. every 20th: ask anyway
+#if RADAR_POWER_OFF
+        pen_note(pin, 0);
+#endif
+        return 0;
+    }
     chip_select(1);
     int z1 = xfer(0xB1), z2 = xfer(0xC1);
     int z = z1 + 4095 - z2;
@@ -230,6 +260,9 @@ int tp_read(int *rx, int *ry)
         s_irq = 0;
         ESP_LOGW(TAG, "a press the pen interrupt did not show: every sample asks the chip from now on");
     }
+#if RADAR_POWER_OFF
+    pen_note(pin, pressed);
+#endif
     return pressed;
 }
 
