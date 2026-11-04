@@ -123,6 +123,17 @@ void led_set(const uint8_t rgb[3])
     }
 }
 
+#if RADAR_POWER_OFF
+/* GPIO 16, 17 and 22 are not RTC pins. each colour lights only when pulled to ground, so they stop
+ * driving: inputs with the pull-up, as led_red leaves one. not driven, not lit, held or not */
+void led_off(void)
+{
+    if (!s_ready) return;
+    for (int i = 0; i < 3; i++) gpio_reset_pin(s_pin[i]);
+    s_ready = 0;
+}
+#endif
+
 #else
 void led_init(int red_gpio) { (void)red_gpio; }
 void led_red(int gpio) { (void)gpio; }

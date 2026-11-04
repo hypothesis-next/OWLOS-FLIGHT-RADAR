@@ -1,4 +1,5 @@
 #include "net.h"
+#include "board.h"
 #include <stdio.h>
 #include <string.h>
 #include "esp_crt_bundle.h"
@@ -175,6 +176,17 @@ void net_reconnect(const secrets_t *s)
     if (s_have_ssid) esp_wifi_connect();
     ESP_LOGI(TAG, "WiFi settings changed, network \"%s\"", s->ssid);
 }
+
+#if RADAR_POWER_OFF
+void net_stop(void)
+{
+    s_have_ssid = 0;                                  // the lost-WiFi event must not join again
+    esp_wifi_disconnect();
+    esp_err_t e = esp_wifi_stop();
+    s_up = 0;
+    ESP_LOGI(TAG, "WiFi stopped: %s", esp_err_to_name(e));
+}
+#endif
 
 int net_up(void) { return s_up; }
 

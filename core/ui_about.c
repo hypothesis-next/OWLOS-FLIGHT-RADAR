@@ -121,7 +121,8 @@ void about_draw(ui_t *u, canvas_t *cv)
         char line[48];
         micro_text(cv, x, y, "OWLOS FLIGHT RADAR", C_PRIM, 240, 1);
         micro_text(cv, x, y + AY(12, 14), "VERSION", C_QUIET, 230, 1);
-        font_text(cv, &FONT_LARGE, x - 1, y + AY(20, 24), ver, C_FOCUS, 255);
+        // the large font has digits and few letters: a fork's "0.4-poweroff" goes in the next one down
+        font_text(cv, strchr(ver, '-') ? &FONT_MEDIUM : &FONT_LARGE, x - 1, y + AY(20, 24), ver, C_FOCUS, 255);
         const int w = qx - x - 6;                      // the pixel font has no " and no &: these in the smooth one
         font_text_clip(cv, &FONT_SMALL, x, y + AY(44, 54), said, said_col, 250, w);
         font_text_clip(cv, &FONT_SMALL, x, y + AY(62, 78), RADAR_BOARD, C_DIM, 235, w);

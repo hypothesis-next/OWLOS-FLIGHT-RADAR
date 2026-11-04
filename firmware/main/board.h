@@ -76,6 +76,9 @@
 #define TOUCH_GT911_TOO 1
 #define PIN_I2C_SDA   33
 #define PIN_I2C_SCL   32
+/* three taps on the scope, or the console's OWLOS POWEROFF: deep sleep, a touch wakes it (main.c).
+ * this build only: it needs T_IRQ on an RTC pin. the C version has none, it says no at run time */
+#define RADAR_POWER_OFF 1
 
 #elif RADAR_DISPLAY == DISPLAY_ILI9486_480x320
 /* Waveshare RPi LCD (A) 3.5" on the OWLOSAirQuality board, ViewOwl's ILI9486 build.
@@ -252,6 +255,9 @@
 #endif
 #ifndef DISP_HELPER
 #define DISP_HELPER 0
+#endif
+#ifndef RADAR_POWER_OFF
+#define RADAR_POWER_OFF 0
 #endif
 
 // raw touch units across the screen, for the sanity check of a stored alignment

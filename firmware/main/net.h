@@ -8,6 +8,7 @@
 
 void net_start(const secrets_t *s);          // nothing happens without an SSID
 void net_reconnect(const secrets_t *s);      // new WiFi settings, from the site or the screen
+void net_stop(void);                         // power off (board.h RADAR_POWER_OFF): leave the network, the radio off
 int  net_up(void);                           // 1 = connected, has an address
 int  net_why(void);                          // WHY_*: the network set is not up because
 void net_ip(char *buf, int cap);

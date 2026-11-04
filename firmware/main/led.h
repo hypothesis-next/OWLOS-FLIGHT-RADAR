@@ -5,3 +5,4 @@
 void led_init(int red_gpio);             // the red one's pin is the user's: core/light.h
 void led_red(int gpio);                  // red moves to that pin, the old one is let go
 void led_set(const uint8_t rgb[3]);      // 0..255 a colour
+void led_off(void);                      // power off (board.h RADAR_POWER_OFF): the pins let go, it stays dark

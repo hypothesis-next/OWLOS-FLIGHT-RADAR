@@ -159,6 +159,7 @@ void ui_strip(ui_t *u, canvas_t *cv);
 
 void ui_touch(ui_t *u, int down, int x, int y, int rx, int ry, uint32_t now, ui_cmd_t *cmd);
 void ui_button(ui_t *u, int ev, ui_cmd_t *cmd);     /* BOOT: 1 short, 2 long */
+int  ui_tap_free(const ui_t *u);                    /* the main view, the finger not dragging and on no button */
 void ui_start_calibration(ui_t *u);
 void ui_set_theme(ui_t *u, int theme);
 void touch_apply(const touch_cal_t *c, int rx, int ry, int *x, int *y);

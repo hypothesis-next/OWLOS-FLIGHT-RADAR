@@ -6,6 +6,8 @@ The site keeps the firmware of each version: a new number here keeps the one bef
 
 ## 0.4
 
+- This fork, the 3.5" CYD R version, shown as 0.4-poweroff: three quick taps on the main screen power it
+  off, a touch wakes it, `OWLOS POWEROFF` does it over USB. The site's update button would replace this fork.
 - Three more boards, each asked for by people who have one, none run here yet: the LCDWIKI ES3C28P
   (ESP32-S3, ILI9341V, capacitive touch), the NM-CYD-C5 (ESP32-C5, ST7789, resistive touch) and
   Elecrow's CrowPanel Advance 2.8" (ESP32-S3, ST7789 IPS, capacitive touch). Tell us how it goes.

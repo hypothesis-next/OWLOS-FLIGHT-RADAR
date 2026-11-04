@@ -181,6 +181,20 @@ static int xfer(uint8_t cmd)
     if (!s_dev || spi_device_polling_transmit(s_dev, &t) != ESP_OK) return 0;
     return (int)(((t.rx_data[1] << 8) | t.rx_data[2]) >> 3) & 0xFFF;
 }
+
+#if RADAR_POWER_OFF
+int tp_pen_standby(void)
+{
+#if TOUCH_GT911_TOO
+    if (s_gt) return 0;                              // the C version: nothing on T_IRQ to wake it
+#endif
+    if (!s_dev) return 0;
+    xfer(0xD0);                                      // power down, pen interrupt on
+    return 1;
+}
+
+int tp_pen_up(void) { return gpio_get_level(PIN_T_IRQ); }
+#endif
 #endif
 
 static int median5(int *v)

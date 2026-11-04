@@ -34,3 +34,5 @@ void        disp_wait_idle(void);
 void        disp_pack_under(const canvas_t *under);
 void        disp_strip2(const canvas_t *cv, int under_rows);
 int         disp_rows(int rows);
+// power off (board.h RADAR_POWER_OFF): the panel off and asleep. the next disp_init wakes it
+void        disp_sleep(void);

@@ -726,6 +726,11 @@ void ui_touch(ui_t *u, int down, int x, int y, int rx, int ry, uint32_t now, ui_
 }
 
 // BOOT: short = next range, long = back to the scope. on the alignment page: skip it
+int ui_tap_free(const ui_t *u)
+{
+    return u->view == VIEW_MAIN && !u->t_moved && (u->t_hit == HIT_NONE || u->t_hit == HIT_SCOPE);
+}
+
 void ui_button(ui_t *u, int ev, ui_cmd_t *cmd)
 {
     if (u->view == VIEW_CAL) { u->view = VIEW_MAIN; toast(u, "TOUCH SKIPPED"); return; }

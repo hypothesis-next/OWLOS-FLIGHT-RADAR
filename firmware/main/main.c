@@ -35,6 +35,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#if RADAR_POWER_OFF
+#include "driver/gpio.h"
+#include "esp_sleep.h"
+#endif
 
 // FLIGHT_VERSION comes from CHANGES.md (firmware/CMakeLists.txt)
 #define DEMO_BYTES     6144            /* the demo's answer: 12 planes */
@@ -42,6 +46,17 @@
 #define FR24_EVERY_MS  20000u          /* FR24 counts credits: slower */
 
 static const char *TAG = "flight";
+
+#if RADAR_POWER_OFF
+#define POWER_OFF_TAPS        3       /* taps in a row */
+#define POWER_OFF_WINDOW_MS   1200u   /* all of them, first finger down to last lift */
+#define POWER_OFF_TAP_MAX_MS  300u    /* held longer it is a press, not a tap */
+#define POWER_OFF_TAP_SAMPLES 2       /* seen once is the resistive panel inventing a press */
+#define POWER_OFF_LIFT_MS     30u     /* up for less than this, the panel flickered: the same press */
+#define POWER_OFF_SETTLE_MS   300u    /* T_IRQ high this long before sleeping, or it wakes at once */
+#define POWER_OFF_WAIT_MS     5000u   /* T_IRQ still low after this: no sleep, it would not stay asleep */
+static volatile int s_power_off_ask;  /* the console's OWLOS POWEROFF, the screen task does it */
+#endif
 
 static sky_t             s_sky;        // written by the fetch task, under s_lock
 static demo_t            s_demo;
@@ -642,6 +657,9 @@ static void on_line(const char *line)
 {
     if (!strncmp(line, "OWLOS HELLO", 11)) { printf("OWLOS READY flight-radar %s\n", FLIGHT_VERSION); return; }
     if (!strncmp(line, "OWLOS GET", 9)) { say_cfg(); return; }
+#if RADAR_POWER_OFF
+    if (!strcmp(line, "OWLOS POWEROFF")) { s_power_off_ask = 1; printf("OWLOS OK\n"); return; }
+#endif
     if (strncmp(line, "OWLOS SET ", 10)) return;
     const char *j = line + 10;
     secrets_t sec;
@@ -860,6 +878,76 @@ static void screen_flip(int on)
     (void)on;
 }
 
+#if RADAR_POWER_OFF
+/* fed every touch sample, 1 when the last tap of the row is done. free: ui_tap_free. a tap is judged
+ * once the finger has stayed up, so a flicker in the middle of a press does not make it two */
+static int power_tap(int down, int free, uint32_t t)
+{
+    static int      count, samples, spoiled, pressed;
+    static uint32_t first, start, lift;
+    if (!free && !samples) count = 0;                  // another page, or the end of a drag
+    if (down) {
+        if (!samples) { start = t; spoiled = 0; }
+        spoiled |= !free;
+        samples++;
+        pressed = 1;
+        return 0;
+    }
+    if (pressed) { pressed = 0; lift = t; }
+    if (!samples || t - lift < POWER_OFF_LIFT_MS) return 0;
+    int tap = free && !spoiled && samples >= POWER_OFF_TAP_SAMPLES && lift - start <= POWER_OFF_TAP_MAX_MS;
+    samples = 0;
+    if (!tap) { count = 0; return 0; }
+    if (!count || lift - first > POWER_OFF_WINDOW_MS) { count = 0; first = start; }
+    if (++count < POWER_OFF_TAPS) return 0;
+    count = 0;
+    return 1;
+}
+
+// the pin driven and latched: stays so through deep sleep, till gpio_hold_dis in app_main
+static void hold_pin(int pin, int level)
+{
+    gpio_set_level(pin, level);
+    gpio_config_t out = { .pin_bit_mask = 1ULL << pin, .mode = GPIO_MODE_OUTPUT };
+    gpio_config(&out);
+    gpio_set_level(pin, level);
+    gpio_hold_en(pin);
+}
+
+/* deep sleep, a touch wakes it: a normal start then. from the screen task between frames, the bus
+ * is its own. comes back only when it can't be done, nothing is stopped by then but the backlight */
+static void power_off(void)
+{
+    s_power_off_ask = 0;
+    if (!tp_pen_standby()) {
+        ESP_LOGW(TAG, "no power off: a touch could not wake this board");
+        return;
+    }
+    disp_backlight(0);
+    uint32_t t0 = now_ms(), up = t0;
+    while (now_ms() - up < POWER_OFF_SETTLE_MS) {
+        if (!tp_pen_up()) up = now_ms();
+        if (now_ms() - t0 > POWER_OFF_WAIT_MS) {
+            ESP_LOGW(TAG, "no power off: T_IRQ stays low, it would wake at once");
+            disp_backlight(100);
+            return;
+        }
+        esp_task_wdt_reset();
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    ESP_LOGI(TAG, "power off, a touch wakes it");
+    net_stop();
+    esp_task_wdt_reset();
+    led_off();
+    disp_sleep();
+    hold_pin(PIN_LCD_BL, 0);                           // a floating pin could leave the backlight partly lit
+    hold_pin(PIN_LCD_CS, 1);                           // the panel and the touch chip deaf to a floating bus
+    hold_pin(PIN_T_CS, 1);
+    ESP_ERROR_CHECK(esp_sleep_enable_ext0_wakeup(PIN_T_IRQ, 0));
+    esp_deep_sleep_start();
+}
+#endif
+
 static void ui_task(void *arg)
 {
     (void)arg;
@@ -890,7 +978,7 @@ static void ui_task(void *arg)
     led_init(light_red_gpio(&s_ui.light));
     s_ui.map = &s_map;                                 // the fetch task makes it, the scope draws it
     ui_clock_us = now_us;                              // the layers get timed, the 10 s log says where it goes
-    ui_version = FLIGHT_VERSION;                       // ABOUT says it, the note compares the site's with it
+    ui_version = RADAR_POWER_OFF ? FLIGHT_VERSION "-poweroff" : FLIGHT_VERSION;   // ABOUT says it, the note compares the site's with it
 #if LCD_PROFILES
     ui_screen_name = disp_profile_name();              // the screen offers the other ones
 #endif
@@ -903,7 +991,7 @@ static void ui_task(void *arg)
     float sx = fabsf(s_ui.cal.a) + fabsf(s_ui.cal.b), sy = fabsf(s_ui.cal.d) + fabsf(s_ui.cal.e);
     if (!have || sx < want / 3 || sx > want * 3 || sy < want / 3 || sy > want * 3) ui_start_calibration(&s_ui);
 #endif
-    ESP_LOGI(TAG, "%s %s, %dx%d, free heap %u", RADAR_NAME, FLIGHT_VERSION, GFX_W, GFX_H,
+    ESP_LOGI(TAG, "%s %s, %dx%d, free heap %u", RADAR_NAME, ui_version, GFX_W, GFX_H,
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_8BIT));
 
     uint32_t frames = 0, t_stat = now_ms(), busy_us = 0, dirty = 0;
@@ -941,6 +1029,9 @@ static void ui_task(void *arg)
         for (int i = 0; i < s_nts; i++) {
             const tsample_t *s = &s_ts[i];
             ui_touch(&s_ui, s->down, s->x, s->y, s->rx, s->ry, s->t, &cmd);
+#if RADAR_POWER_OFF
+            if (power_tap(s->down, ui_tap_free(&s_ui), s->t)) s_power_off_ask = 1;
+#endif
         }
         s_nts = 0;
 
@@ -1086,6 +1177,13 @@ static void ui_task(void *arg)
         busy_us += (uint32_t)(esp_timer_get_time() - t0);
         frames++;
         if (light < 100) disp_backlight(light += 10);
+#if RADAR_POWER_OFF
+        if (s_power_off_ask) {
+            if (dirty) store_save_cfg(&s_ui.cfg);      // a setting changed a moment ago is kept
+            dirty = 0;
+            power_off();
+        }
+#endif
 
         if (now - t_stat >= 10000u) {
             uint32_t f = frames ? frames : 1;
@@ -1120,6 +1218,13 @@ static void ui_task(void *arg)
 
 void app_main(void)
 {
+#if RADAR_POWER_OFF
+    /* a wake from power off finds these still latched. let go before anything sets them up: the
+     * screen and the touch would stay deaf. after a reset or a power cut they are free anyway */
+    gpio_hold_dis(PIN_LCD_BL);
+    gpio_hold_dis(PIN_LCD_CS);
+    gpio_hold_dis(PIN_T_CS);
+#endif
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());

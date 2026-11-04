@@ -271,6 +271,16 @@ void disp_backlight(int percent)
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
 }
 
+#if RADAR_POWER_OFF
+void disp_sleep(void)
+{
+    disp_wait_idle();
+    cmd(0x28, NULL, 0);                                /* display off */
+    cmd(0x10, NULL, 0);                                /* sleep in */
+    vTaskDelay(pdMS_TO_TICKS(120));                    /* the chip's own time to get there */
+}
+#endif
+
 /* screen profiles: one start-up for most boards, three for the CYD revisions (board.h) */
 typedef struct { const char *name; const init_cmd_t *cmds; size_t n; } profile_t;
 #define PROFILE(name, t) { name, t, sizeof t / sizeof t[0] }

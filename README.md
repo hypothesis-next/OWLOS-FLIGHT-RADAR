@@ -234,6 +234,17 @@ The pictures are the 3.5" board, the 2.8" one has the same screens a little smal
 - **Hold a finger 4 s** on an empty spot to align the touch again.
 - **The RPi LCD** has no touch: BOOT steps through the planes, held it changes the range.
 
+### Power off (this fork, the 3.5" CYD, R version)
+
+The button on the board's power chip only turns it on. On this build:
+
+- **Three quick taps** on the scope or the map, on no button and on the main screen only, all within about
+  1.2 seconds: the screen goes dark and the board sleeps. A plane under a tap still gets picked first.
+- **Touch the screen** to wake it. It starts as after a power on, with its settings. A reset or a power cut
+  starts it too.
+- ABOUT says `0.4-poweroff`. The site's update button flashes the site's firmware over this one, and
+  the power off goes with it.
+
 ## If it ever stands still
 
 Plug it into a computer and press READ WHAT IT HAS on the site, step 2. The board says how long it has
@@ -295,6 +306,8 @@ The site talks to the board over the USB cable at 115200 baud, a line each way. 
   `led_test` (1: red, green, blue once),
   `screen` (0 v1, 1 v2, 2 v3; on the NM-CYD-C5 and the CrowPanel Advance 0 RGB, 1 BGR). What is left
   out stays as it is. Answered with `OWLOS OK` or `OWLOS ERR <why>`.
+- `OWLOS POWEROFF`, this fork's 3.5" CYD build only: answered with `OWLOS OK`, then the same power off as
+  three taps. If the panel stays pressed for 5 seconds, or the board is a C version, it stays on and logs why.
 
 ## Data and licences
 
