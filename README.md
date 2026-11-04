@@ -242,6 +242,7 @@ The button on the board's power chip only turns it on. On this build:
   within about 1.2 seconds: the screen goes dark and the board sleeps. A plane under a tap still gets picked first.
 - **Touch the screen** to wake it. It starts as after a power on, with its settings. A reset or a power cut
   starts it too.
+- On battery, a touch did not wake the board tested after 2 minutes off, its on button did: the power chip seems to cut the power at so low a load. On USB a touch wakes it.
 - ABOUT says `0.4-poweroff`. The site's update button flashes the site's firmware over this one, and
   the power off goes with it.
 
