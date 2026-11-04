@@ -238,7 +238,7 @@ The pictures are the 3.5" board, the 2.8" one has the same screens a little smal
 
 The button on the board's power chip only turns it on. On this build:
 
-- **Three quick taps** on one spot of the scope or the map, on no button and on the main screen only, all
+- **Three quick taps** on one spot of the empty background outside the scope, in a corner of the screen (taps on the scope itself are usually read as a zoom and do not count), on no button and on the main screen only, all
   within about 1.2 seconds: the screen goes dark and the board sleeps. A plane under a tap still gets picked first.
 - **Touch the screen** to wake it. It starts as after a power on, with its settings. A reset or a power cut
   starts it too.
